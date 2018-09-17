@@ -1,7 +1,7 @@
 import numpy as np
 import pygetdata as gd
 import matplotlib.pyplot as plt
-import pykst as kst
+#import pykst as kst
 
 fs = 488.28125 # Hz
 
@@ -21,6 +21,29 @@ def loadIQAllChan(dirfile, nsec):
     ivals = np.asarray(ivals)
     qvals = np.asarray(qvals)
     return ivals, qvals
+
+def loadArbData(dirfile, file):
+    d = gd.dirfile(dirfile, gd.RDWR|gd.UNENCODED)
+    vectors = d.field_list()
+    for i in range (len(vectors)):
+        if vectors[i] == file:
+            values = d.getdata(file, gd.UINT16, num_frames = d.nframes)
+    return np.asarray(values, dtype = 'int')
+
+def avg_arrays(how_long, array):
+    counter = 0
+    current_sum = 0.
+    out_array = []
+    for i in range(len(array)):
+        current_sum += array[i]
+        counter += 1
+        print counter, current_sum
+        if counter == how_long:
+            counter = 0
+            print current_sum/how_long
+            out_array.append(float(current_sum/how_long))
+            current_sum = 0.
+    return out_array
 
 def loadIQsingleChan(dirfile, chan):
     d = gd.dirfile(dirfile, gd.RDWR|gd.UNENCODED)
@@ -86,15 +109,15 @@ def loadChanPhaseRange(dirfile, chan, first_sample, num_samples):
     phase = np.angle(s21_rot)
     return np.asarray(phase, dtype = 'float')
 
-def plotVectorKst(x, y, xname, yname):
+#def plotVectorKst(x, y, xname, yname):
     # start a kst session with the arbitrary name "NumpyVector"
-    client=kst.Client("Vector")
+    #client=kst.Client("Vector")
     # copy the numpy arrays into kst
-    V1 = client.new_editable_vector(x, name=xname) # the name is for the label
-    V2 = client.new_editable_vector(y, name=yname) # the name is for the label
+    #V1 = client.new_editable_vector(x, name=xname) # the name is for the label
+    #V2 = client.new_editable_vector(y, name=yname) # the name is for the label
     # inside kst, create a curve, a plot, and add the curve to the plot
-    c1 = client.new_curve(V1, V2)
-    p1 = client.new_plot()
-    p1.add(c1)
-    return
+    #c1 = client.new_curve(V1, V2)
+    #p1 = client.new_plot()
+    #p1.add(c1)
+    #return
 

@@ -3,25 +3,5 @@
 /PROTECT none
 /ENCODING none
 
-i_kid0300_roach3 RAW FLOAT32 1
-i_kid0301_roach3 RAW FLOAT32 1
-i_kid0302_roach3 RAW FLOAT32 1
-i_kid0303_roach3 RAW FLOAT32 1
-i_kid0304_roach3 RAW FLOAT32 1
-i_kid0305_roach3 RAW FLOAT32 1
-i_kid0306_roach3 RAW FLOAT32 1
-i_kid0307_roach3 RAW FLOAT32 1
-i_kid0308_roach3 RAW FLOAT32 1
-i_kid0309_roach3 RAW FLOAT32 1
-q_kid0300_roach3 RAW FLOAT32 1
-q_kid0301_roach3 RAW FLOAT32 1
-q_kid0302_roach3 RAW FLOAT32 1
-q_kid0303_roach3 RAW FLOAT32 1
-q_kid0304_roach3 RAW FLOAT32 1
-q_kid0305_roach3 RAW FLOAT32 1
-q_kid0306_roach3 RAW FLOAT32 1
-q_kid0307_roach3 RAW FLOAT32 1
-q_kid0308_roach3 RAW FLOAT32 1
-q_kid0310_roach3 RAW FLOAT32 1
 x_stage RAW UINT16 5
 y_stage RAW UINT16 5
