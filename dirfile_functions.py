@@ -52,6 +52,7 @@ def loadIQsingleChan(dirfile, chan):
     qfiles = [v for v in vectors if v[0] == "q" and v != "INDEX"]
     ifiles = sorted(ifiles, key=lambda x: x.split('_')[1])
     qfiles = sorted(qfiles, key=lambda x: x.split('_')[1])
+    print ifiles[chan], qfiles[chan]
     ivals = d.getdata(ifiles[chan], gd.FLOAT32, num_frames = d.nframes)
     qvals = d.getdata(qfiles[chan], gd.FLOAT32, num_frames = d.nframes)
     d.close()
