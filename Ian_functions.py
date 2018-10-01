@@ -83,3 +83,17 @@ def IQtoPhase(Iarray, Qarray):
         else:
             out_array.append(np.pi/2.)
     return out_array
+
+def loadArbData(dirfile, file, file_type):
+    d = gd.dirfile(dirfile, gd.RDWR|gd.UNENCODED)
+    vectors = d.field_list()
+    #print vectors
+    for i in range (len(vectors)):
+        if vectors[i] == file:
+            if file_type == 'u16':
+                values = d.getdata(file, gd.UINT16, num_frames = d.nframes)
+            if file_type == 'u32':
+                values = d.getdata(file, gd.UINT32, num_frames = d.nframes)
+            if file_type == 's32':
+                values = d.getdata(file, gd.INT32, num_frames = d.nframes)
+    return np.asarray(values)
