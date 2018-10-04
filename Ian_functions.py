@@ -1,8 +1,16 @@
+import dirfile_functions as df
 import numpy as np
-import pygetdata as gd
 import matplotlib.pyplot as plt
+import pygetdata as gd
+from scipy.interpolate import interp1d
+from scipy.interpolate import griddata
+from scipy.stats import binned_statistic_2d
+import pandas as pd
+from scipy import signal
 roach_path = 'roach_data/'
-otherdata_path = 'xy_stage/'
+ancillary_path = 'xy_stage/'
+old_path = '2012_data/'
+bolo_path = '2012_data/bolo_data/'
 
 def avg_arrays(how_long, array):
     counter = 0
@@ -84,6 +92,19 @@ def IQtoPhase(Iarray, Qarray):
             out_array.append(np.pi/2.)
     return out_array
 
+#stolen from stack overflow to test
+def butter_highpass(cutoff, fs, order=5):
+    nyq = 0.5 * fs
+    normal_cutoff = cutoff / nyq
+    b, a = signal.butter(order, normal_cutoff, btype='high', analog=False)
+    return b, a
+
+def butter_highpass_filter(data, cutoff, fs, order=5):
+    b, a = butter_highpass(cutoff, fs, order=order)
+    y = signal.filtfilt(b, a, data)
+    return y
+
+#### below here are newer useful functions, above is preserved for records
 def loadArbData(dirfile, file, file_type):
     d = gd.dirfile(dirfile, gd.RDWR|gd.UNENCODED)
     vectors = d.field_list()
@@ -97,3 +118,53 @@ def loadArbData(dirfile, file, file_type):
             if file_type == 's32':
                 values = d.getdata(file, gd.INT32, num_frames = d.nframes)
     return np.asarray(values)
+
+
+def arb_binning(ra, dec, bolo_data, pixel_size):
+    #pixel size is in degrees so pass ra and dec in degrees
+    # returns bolo data binned for map processing
+    n_ra = np.int(np.ceil((ra.max()-ra.min())/pixel_size))+1
+    n_dec = np.int(np.ceil((dec.max()-dec.min())/pixel_size))+1
+
+    ra_bins = np.amin(ra)-pixel_size/2.+np.arange(n_ra+1)*pixel_size
+    dec_bins = np.amin(dec)-pixel_size/2.+np.arange(n_dec+1)*pixel_size
+
+    i_ind = np.digitize(ra,ra_bins)
+    j_ind = np.digitize(dec, dec_bins)
+
+    bolo_array = np.zeros((len(bolo_data),3))
+
+    bolo_array[:,0] = bolo_data
+    bolo_array[:,1] = i_ind
+    bolo_array[:,2] = j_ind
+    size = [n_ra, n_dec]
+    return bolo_array, size
+
+def ra_to_deg(ra):
+    ra = ra*15
+    return ra
+
+
+# for posterity, the original processing function, use arb binning now
+def arb_map_gen(ra, dec, bolo_data, pixel_size):
+    #note that the bolo data ra and dec data passed must all be the same length
+    # process the RA and DEC data into degrees first and interpolate.
+    #pixel size is in degrees so pass ra and dec in degrees
+    n_ra = np.int(np.ceil((ra.max()-ra.min())/pixel_size))
+    n_dec = np.int(np.ceil((dec.max()-dec.min())/pixel_size))
+    ra_bins, dec_bins = [], []
+    ijbol_list = []
+    size = [n_ra, n_dec]
+    print n_ra
+    print n_dec
+    for i in range(0, n_ra):
+        ra_bins.append(ra.min()+i*pixel_size)
+    for j in range(0, n_dec):
+        dec_bins.append(dec.min()+j*pixel_size)
+    for n in range(0, len(bolo_data)):
+        ra_test = np.abs(ra_bins-ra[n])
+        dec_test = np.abs(dec_bins-dec[n])
+        i_ind = np.where(ra_test == np.min(ra_test))
+        j_ind = np.where(dec_test == np.min(dec_test))
+        ijbol_list.append([bolo_data[n], i_ind[0][0], j_ind[0][0]])
+    return ijbol_list, size
