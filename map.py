@@ -100,6 +100,11 @@ class despike():
 class filterdata():
 
     def __init__(self, data, cutoff, fs):
+        
+        '''
+        fs: sample frequency
+        cutoff: cutoff frequency
+        '''
 
         self.data = data
         self.cutoff = cutoff
@@ -112,11 +117,91 @@ class filterdata():
         b, a = sgn.butter(order, normal_cutoff, btype='highpass', analog=False)
         return b, a
 
-    def butter_lowpass_filter(self, order=5):
+    def butter_highpass_filter(self, order=5):
         b, a = highpass(order)
         self.data = sgn.lfilter(b, a, self.data)
         return self.data
 
+class rotate():
+
+    '''
+    Pitch is a rotation around the x axis
+    Yaw is a rotation around the z axis
+    Roll is a rotation around the y axis
+    To go from inertial to gondola rotate zxy (first yaw, then pitch and then roll)
+    '''
+
+    def __init__(self, yaw, pitch, roll):
+
+        self.yaw = yaw
+        self.pitch = pitch
+        self.roll = roll
+
+    def rotmatrix(self, yaw_mat = self.yaw, roll_mat = self.roll, pitch_mat=self.pitch):
+        yawMatrix = np.matrix([[np.cos(yaw_mat), -np.sin(yaw_mat), 0], \
+                               [np.sin(yaw_mat), np.cos(yaw_mat), 0], \
+                               [0, 0, 1]])
+
+        rollMatrix = np.matrix([[np.cos(roll_mat), 0, -np.sin(roll_mat)],\
+                                [0, 1, 0],\
+                                [np.sin(roll_mat), 0, np.cos(roll_mat)]])
+
+        pitchMatrix = np.matrix([[1, 0, 0],\
+                                 [0, np.cos(pitch_mat), -np.sin(pitch_mat)],\
+                                 [0, np.sin(pitch_mat), np.cos(pitch_mat)]]) 
+
+        return pitchMatrix, rollMatrix, yawMatrix
+
+    def offset_mat(self, yaw_off, pitch_off, roll_off, rot_mat=np.diag(np.ones(3))):
+
+        pitch_off_mat = rotmatrix(yaw_mat = yaw_off, roll_mat = roll_off, pitch = pitch_off)[0]
+        roll_off_mat = rotmatrix(yaw_mat = yaw_off, roll_mat = roll_off, pitch = pitch_off)[1]
+        yaw_off_mat = rotmatrix(yaw_mat = yaw_off, roll_mat = roll_off, pitch = pitch_off)[2]
+
+        rot1 = np.matmul(yaw_off_mat, rot_mat)
+        rot2 = np.matmul(pitch_off_mat, rot1)
+        rot3 = np.matmul(roll_off_mat, rot2)
+
+        return rot3
+    
+    def offset_angle(self, yaw_off=0., pitch_off=0., roll_off=0., rot_mat=0.):
+
+        if np.size(yaw_off) == 1:
+            if np.greater(yaw_off,0.)==True or np.greater(roll_off,0.)==True or \
+               np.greater(pitch_off,0.)==True:
+
+                rot_matrix = offset_mat(yaw_off, pitch_off, roll_off)
+        else:
+            if np.any(np.greater(yaw_off,0.))==True or np.any(np.greater(pitch_off,0.))==True or \
+                np.any(np.greater(roll_off,0.))==True:
+
+                matrix = np.diag(np.ones(3))
+                for i in len(yaw_off):
+                    rot_matrix = offset_mat(yaw_off[i], pitch_off[i], roll_off[i], rot_mat=matrix)
+                    matrix = rot_matrix.copy()
+
+        if np.size(rot_mat) >= 3:
+
+            rot_matrix = rot_mat
+
+        pitch_off_final = np.arctan2(rot_matrix[1,2],np.sqrt(rot_matrix[1,0]**2+rot_matrix[1,1]**2))
+        roll_off_final = np.arctan2(rot_matrix[0,2],rot_matrix[2,2])
+        yaw_off_final = np.arctan2(rot_matrix[1,0],rot_matrix[1,1])
+
+        return pitch_off_final, roll_off_final, yaw_off_final
+
+    def finalcoord(self, yaw_off=0., pitch_off=0., roll_off=0.):
+
+        cr = np.cos(self.roll)
+        sr = np.sin(self.roll)
+        cp = np.cos(self.pitch)
+
+        self.yaw = self.yaw+2*np.arcsin(np.sin((yaw_off*cr+pitch_off*sr)/2.)/cp)
+        self.roll = self.roll
+        self.pitch = self.pitch+(-yaw_off*sr+pitch_off*cr)
+
+        return self.pitch, self.roll, self.yaw
+        
 class mapmaking():
 
     def __init__(self, data, weight, polangle, number):
@@ -126,7 +211,7 @@ class mapmaking():
         self.polangle = polangle
         self.number = number
 
-    def map_singledetector(self, value=self.data, sigma=self.weight, angle=self.polangle):
+    def map_param(self, value=self.data, sigma=self.weight, angle=self.polangle):
 
         param = i*len(i)+j
 
@@ -154,6 +239,14 @@ class mapmaking():
         E = c_flat*s_flat-m_flat*N_hits_flat
         F = c2_flat*N_hits_flat-c_flat**2
 
+        return I_est_flat, Q_est_flat, U_est_flat, Delta, A, B, C, D, E, F
+
+    def map_singledetector(self, value=self.data, sigma=self.weight, angle=self.polangle):
+
+        I_est_flat, Q_est_flat, U_est_flat, Delta, A, B, C, D, E, F = map_param(value=self.data, \
+                                                                                sigma=self.weight,\
+                                                                                angle=self.polangle)
+
         I_pixel_flat = (A*I_est_flat+B*Q_est_flat+C*U_est_flat)/Delta
         Q_pixel_flat = (B*I_est_flat+D*Q_est_flat+E*U_est_flat)/Delta
         U_pixel_flat = (C*I_est_flat+E*Q_est_flat+F*U_est_flat)/Delta
@@ -176,6 +269,10 @@ class mapmaking():
             U_map += mapvalues[2]
 
         return I_map, Q_map, U_map
+
+
+        
+
 
 
 
