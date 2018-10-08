@@ -144,6 +144,55 @@ def ra_to_deg(ra):
     ra = ra*15
     return ra
 
+def ra_dec_to_array(ra, dec):
+    data_out = np.zeros((len(ra),2))
+    data_out[:,0] = ra
+    data_out[:,1] = dec
+    return data_out
+
+def despike_naive(bolo_data):
+    out_data = bolo_data
+    for i in range(len(bolo_data)-60):
+        val = bolo_data[i]
+        l_val = bolo_data[i-60]
+        r_val = bolo_data[i+60]
+        if np.abs(l_val - val) > 0.0005 or np.abs(r_val - val) > 0.0005:
+            val = np.mean([l_val, r_val])
+            out_data[i] = val
+    return out_data
+
+def clean_up_world(world):
+    ra_vals = np.zeros((len(world), 1))
+    dec_vals = np.zeros((len(world), 1))
+    ra_vals = world[:,0]
+    dec_vals = world[:,1]
+    ra_vals = np.round(ra_vals)
+    dec_vals = np.round(dec_vals)
+    out_world = np.zeros((len(world), 2))
+    out_world[:,0] = ra_vals
+    out_world[:,1] = dec_vals
+    ra_size = ra_vals.max()
+    dec_size = dec_vals.max()
+    size  = [np.int(ra_size), np.int(dec_size)]
+    return out_world.astype(int), size
+    
+def sort_bolo(bolo_data, ra_dec_bins, size, splash_flag=0):
+    data_array = np.zeros((size[1]+2, size[0]+2))
+    for i in range(len(bolo_data)):
+        ra_bin = ra_dec_bins[i][0]
+        dec_bin = ra_dec_bins[i][1]
+        data_array[dec_bin][ra_bin] = data_array[dec_bin][ra_bin] + bolo_data[i]
+        if splash_flag == 1:
+            data_array[dec_bin-1][ra_bin] = data_array[dec_bin-1][ra_bin] + bolo_data[i]
+            data_array[dec_bin+1][ra_bin] = data_array[dec_bin+1][ra_bin] + bolo_data[i]
+            data_array[dec_bin][ra_bin-1] = data_array[dec_bin][ra_bin-1] + bolo_data[i]
+            data_array[dec_bin][ra_bin+1] = data_array[dec_bin][ra_bin+1] + bolo_data[i]
+            data_array[dec_bin-1][ra_bin-1] = data_array[dec_bin-1][ra_bin-1] + bolo_data[i]
+            data_array[dec_bin+1][ra_bin-1] = data_array[dec_bin+1][ra_bin-1] + bolo_data[i]
+            data_array[dec_bin-1][ra_bin+1] = data_array[dec_bin-1][ra_bin+1] + bolo_data[i]
+            data_array[dec_bin+1][ra_bin+1] = data_array[dec_bin+1][ra_bin+1] + bolo_data[i]
+    return data_array
+#could be rewritten to make it faster, but relatively fast already. no splash beam size ~0.0333 deg, splash set it to 0.0116667
 
 # for posterity, the original processing function, use arb binning now
 def arb_map_gen(ra, dec, bolo_data, pixel_size):
