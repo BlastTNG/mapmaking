@@ -1,5 +1,155 @@
-import numpy as np 
+import numpy as np
+import os
 import scipy.signal as sgn
+import pygetdata as gd
+from astropy import wcs, coordinates
+from astropy.convolution import Gaussian2DKernel
+import ConfigParser
+
+class dataload():
+
+    def __init__(self, filepath_map):
+
+        self.filepath_map = filepath_map
+
+    def conversion_type(file_type):
+
+        if file_type == 'u16':
+            gdtype = gd.UINT16
+        elif file_type == 'u32':
+            gdtype = gd.UINT32
+        elif file_type == 's32':
+            gdtype == gd.INT32
+
+    def map_param(self):
+
+        model = ConfigParser.ConfigParser()
+        model.read(self.filepath_map)
+        sections = model.sections()
+
+        for section in sections:
+
+            if section.lower() == 'file repository':
+                dirfile = model.get(section,'DIRFILE').split('#')[0].strip()
+                detfile = model.get(section,'DETFILE').split('#')[0].strip()
+                coor1file = model.get(section,'COOR1FILE').split('#')[0].strip()
+                coor2file = model.get(section,'COOR2FILE').split('#')[0].strip()
+                pointingfile = model.get(section,'POINTINGOFF').split('#')[0].strip() 
+                dettable = model.get(section, 'DETTABLE').split('#')[0].strip()
+
+                if detfile.find(',') != -1:
+                    detfile_new = detfile.split(',')
+
+            elif section.lower() == 'map parameters':
+                ctype = model.get(section,'CTYPE').split('#')[0].strip()   
+                crpix = model.get(section,'CRPIX').split('#')
+                crpix = np.array(crpix.split(',')).astype(float)
+                crdelt = model.get(section,'CRDELT').split('#')
+                crdelt = np.array(crpix.split(',')).astype(float)
+                crval = model.get(section,'CRDVAL').split('#')
+                crval = np.array(crpix.split(',')).astype(float)
+                conv = model.get(section,'CONV').split('#').strip()
+                stdev = model.get(section,'STDEV').split('#')
+
+                #Conversion of stdev from arcsec to pixel
+                if conv.lower() != 'na':
+                    stdev = float(stdev)/(np.mean(crdelt)*3600.)
+
+            elif section.lower() == 'experiment parameters':
+
+                detfreq = float(model.get(section, 'DETFREQ').split('#'))
+                acsfreq = float(model.get(section, 'ACSFREQ').split('#'))
+                det_dir_conv = model.get(section,'DET_DIR_CONV').split('#')
+                det_dir_conv = np.array(det_dir_conv.split(',')).astype(float)
+                coor1_dir_conv = model.get(section,'COOR1_DIR_CONV').split('#')
+                coor1_dir_conv = np.array(coor1_dir_conv.split(',')).astype(float)
+                coor2_dir_conv = model.get(section,'COOR2_DIR_CONV').split('#')
+                coor2_dir_conv = np.array(coor2_dir_conv.split(',')).astype(float)
+                frames = model.get(section,'FRAMES').split('#')
+                frames = np.array(frames.split(',')).astype(float)
+                det_samp_frame = float(model.get(section, 'DET_SAMP_FRAME').split('#'))
+                acs_samp_frame = float(model.get(section, 'ACS_SAMP_FRAME').split('#'))
+
+        return dirfile, detfile, coor1file, coor2file, pointingfile, dettable, \
+               ctype, crpix, crdelt, crval, conv, stdev, \
+               detfreq, acsfreq, det_dir_conv, coor1_dir_conv, coor2_dir_conv, frames, \
+               det_samp_frame, acs_samp_frame
+        
+    def loaddata(self, filepath, file, file_type):
+        if np.size(filepath) == 1: 
+            d = gd.dirfile(filepath, gd.RDWR|gd.UNENCODED)
+            vectors = d.field_list()
+            for i in range (len(vectors)):
+                if vectors[i] == file:
+                    gdtype = self.conversion_type(file_type)
+                    values = d.getdata(file, gdtype, num_frames = d.nframes)
+            return np.asarray(values, dtype = 'int')
+        else:
+            d = gd.dirfile(filepath[0], gd.RDWR|gd.UNENCODED)
+            vectors = d.field_list()
+            len_det = len(d.getdata(vectors[detlist[0]], gd.UINT16, num_frames = d.nframes))
+            values = np.zeros((len(filepath), len_det))
+
+            for i in range(len(filepath)):
+                d = gd.dirfile(filepath[i], gd.RDWR|gd.UNENCODED)
+                vectors = d.field_list()
+                for j in range(len(vectors)):
+                    if vectors[j] == file[i]:
+                        values[i,:] = np.asarray(d.getdata(vectors[file[i]], \
+                                                 gdtype_det,num_frames = d.nframes))
+                
+        return values
+    
+    def loadfulldata(self, filepath, detlist, det_type, coord='RADEC', coord_type1, coord_type2):
+        d = gd.dirfile(filepath, gd.RDWR|gd.UNENCODED)
+        vectors = d.field_list()
+        len_det = len(d.getdata(vectors[detlist[0]], gd.UINT16, num_frames = d.nframes))
+        data_value = np.zeros((len(detlist), len_det))
+
+        gdtype_det = self.conversion_type(det_type)
+        for i in range(len(detlist)):
+            data_value[i,:] = np.asarray(d.getdata(vectors[detlist[i]], gdtype_det,\
+                                         num_frames = d.nframes))
+
+        gdtype_coord1 = self.conversion_type(coord_type1)
+        gdtype_coord2 = self.conversion_type(coord_type2)
+        if coord == 'RADEC':
+            ra = np.asarray(d.getdata('ra', gdtype_coord1, num_frames = d.nframes), dtype = 'int')
+            dec = np.asarray(d.getdata('dec', gdtype_coord2, num_frames = d.nframes), dtype = 'int')
+
+            return data_value, ra, dec
+
+        elif coord == 'ELAZ'
+
+            el = np.asarray(d.getdata('el', gdtype_coord1, num_frames = d.nframes), dtype = 'int')
+            alt = np.asarray(d.getdata('az', gdtype_coord2, num_frames = d.nframes), dtype = 'int')
+
+            return data_value, el, alt
+
+    def convert_dirfile(self, data_value, value1, value2=0.):
+
+        data_value = value1*data_value+value2   
+
+        return data_value
+
+    def frame_zoom(self, data, sample_frame, fs, frames):
+
+        if len(np.shape(data)) == 1:
+            time = np.arange(len(data[frames[0]:frames[1]])*sample_frame)/fs
+
+            return time, data[frames[0]:frames[1]]
+        else:
+            time = np.arange(len(data[0, frames[0]:frames[1]])*sample_frame)/fs
+
+            return  time, data[:,frames[0]:frames[1]]
+
+    def coord_int(self, coord1, coord2, time_acs, time_det):
+
+        coord1_int = interp1d(tìme_acs, coord1, kind='linear')
+        coord2_int = interp1d(time_acs, coord2, kind= 'linear')
+
+        return coord1_int(time_det), coord2_int(time_det)
+
 
 class despike():
 
@@ -51,12 +201,12 @@ class despike():
 
         return self.width, self.ledge, self.redge
 
-    def replace_peak(self):
+    def replace_peak(self, hthres=5, pthres = 0):
 
         x_inter = np.array([], dtype = 'int')
 
         if len(self.peakind) == 0:
-            self.findpeak(hthres=5)
+            self.findpeak(hthres=hthres, pthres=pthres)
         if len(self.width) == 0:
             self.peak_width()
 
@@ -121,6 +271,47 @@ class filterdata():
         b, a = highpass(order)
         self.data = sgn.lfilter(b, a, self.data)
         return self.data
+
+    def cosine_filter(self, f):
+        if f < .5*self.cutoff:
+            return 0
+        elif 0.5*self.cutoff < f  and f < self.cutoff:
+            return 0.5-0.5*np.cos(np.pi*(f-0.5*self.cutoff)*(self.cutoff-0.5*self.cutoff)**-1)
+        elif f > self.cutoff:
+            return 1
+    
+    def fft_filter(self):
+
+        fft_data = np.fft.rfft(self.data)
+        fft_frequency = np.fft.rfftfreq(self.data, self.fs)
+
+        vect = np.vectorize(self.cosine)
+        
+        filtereddata = vect(fft_frequency)*fft_data
+
+        return filtereddata
+
+    def fft_clean(self, hthres = 5, pthres = 0):
+
+        filtereddata = self.fft_filter()
+        peakind = np.array([])
+        height = np.array([])
+        width = np.array([])
+        ledge = np.array([])
+        redge = np.array([])
+        despikefft = despike(filtereddata, peakind, height, width, ledge, redge)
+
+        cleaned_fftdata = despikefft.replace_peak(hthres = hthres, pthres = pthres)
+
+        return cleaned_fftdata
+
+    def ifft_filter(self, hthres = 5, pthres = 0):
+
+        cleaned_fftdata =  self.fft_clean(hthres = 5, pthres = 0)
+        
+        ifft_data = np.fft.irfft(cleaned_fftdata)
+
+        return ifft_data
 
 class rotate():
 
@@ -202,33 +393,82 @@ class rotate():
 
         return self.pitch, self.roll, self.yaw
         
+class detector():
+
+    def __init__(self, data, responsivity, grid):
+
+        self.data = data
+        self.responsivity = responsivity
+        self.grid = grid
+
+    def calibrate(self):
+
+        return self.data*self.responsivity
+
+    def polangle(self, roll, hwp_angle):
+
+        return self.grid-2*hwp_angle+roll
+
+class wcs_world():
+
+    def __init__(self, ctype, crpix, cdelt, crval):
+
+        self.ctype = ctype
+        self.cdelt = cdelt
+        self.crpix = crpix
+        self.crval = crval
+
+    def world(self, coord):
+        
+        w = wcs.WCS(naxis=2)
+        w.wcs.crpix = self.crpix
+        w.wcs.cdelt = self.crdelt
+        w.wcs.crval = self.crval
+        if self.ctype == 'RADEC':
+            w.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+        elif self.ctype == 'ELALT':
+            w.wcs.ctype = ["TLON-ARC", "TLAT-ARC"]
+
+        world = w.wcs_world2pix(coord, 1)
+
+        return world
+
+
 class mapmaking():
 
-    def __init__(self, data, weight, polangle, number):
+    def __init__(self, data, weight, polangle, number, pixelmap):
 
         self.data = data
         self.weight = weight
         self.polangle = polangle
         self.number = number
+        self.pixelmap = pixelmap
 
     def map_param(self, value=self.data, sigma=self.weight, angle=self.polangle):
 
-        param = i*len(i)+j
+        '''
+        sigma is the inverse of the sqared white noise value, so it is 1/n**2
+        '''
+        x_map = self.pixelmap[:,0]   #RA 
+        y_map = self.pixelmap[:,1]   #DEC
 
-        flux = value.copy()/sigma
+
+        param = x_map*len(x_map)+y_map
+
+        flux = value.copy()
         cos = np.cos(2.*angle.copy())
         sin = np.sin(2.*angle.copy())
 
-        I_est_flat = np.bincount(param, weight=flux)
+        I_est_flat = np.bincount(param, weight=flux)*sigma
         Q_est_flat = np.bincount(param, weight=flux*cos)
         U_est_flat = np.bincount(param, weight=flux*sin)
 
-        N_hits_flat = np.bincount(param)/sigma
-        c_flat = np.bincount(param, weight=0.5*cos)/sigma
-        c2_flat = np.bincount(param, weight=0.5*cos**2)/sigma
-        s_flat = np.bincount(param, weight=0.5*sin)/sigma
+        N_hits_flat = np.bincount(param)*sigma
+        c_flat = np.bincount(param, weight=0.5*cos)*sigma
+        c2_flat = np.bincount(param, weight=0.5*cos**2)*sigma
+        s_flat = np.bincount(param, weight=0.5*sin)*sigma
         s2_flat = N_hits_flat-c2_flat
-        m_flat = np.bincount(param, weight=0.5*cos*sin)/sigma
+        m_flat = np.bincount(param, weight=0.5*cos*sin)*sigma
 
         Delta = c_flat**2*(c2_flat-N_hits_flat)+2*s_flat*c_flat*m_flat-c2_flat*s_flat**2-\
                 N_hits_flat*(c2_flat**2+m_flat**2-c2_flat*N_hits_flat)
@@ -239,25 +479,36 @@ class mapmaking():
         E = c_flat*s_flat-m_flat*N_hits_flat
         F = c2_flat*N_hits_flat-c_flat**2
 
-        return I_est_flat, Q_est_flat, U_est_flat, Delta, A, B, C, D, E, F
+        return I_est_flat, Q_est_flat, U_est_flat, N_hits_flat, Delta, A, B, C, D, E, F
+
+    def map_singledetector_Ionly(self, value=self.data, sigma=self.weight, angle=self.polangle):
+
+        value =self.map_param(value=value, sigma=sigma, angle=angle)
+
+        I = value[0]/value[3]
+
+        I_pixel = np.reshape(I, (len(self.pixelmap[:,0]),len(self.pixelmap[:,1])))
+
+        return I_pixel
 
     def map_singledetector(self, value=self.data, sigma=self.weight, angle=self.polangle):
 
-        I_est_flat, Q_est_flat, U_est_flat, Delta, A, B, C, D, E, F = map_param(value=self.data, \
-                                                                                sigma=self.weight,\
-                                                                                angle=self.polangle)
+        I_est_flat, Q_est_flat, U_est_flat, N_hits_flat, Delta, \
+                    A, B, C, D, E, F = self.map_param(value=value, sigma=sigma,angle=angle)
 
         I_pixel_flat = (A*I_est_flat+B*Q_est_flat+C*U_est_flat)/Delta
         Q_pixel_flat = (B*I_est_flat+D*Q_est_flat+E*U_est_flat)/Delta
         U_pixel_flat = (C*I_est_flat+E*Q_est_flat+F*U_est_flat)/Delta
 
-        I_pixel = np.reshape(I_pixel_flat, (i,j))
-        Q_pixel = np.reshape(Q_pixel_flat, (i,j))
-        U_pixel = np.reshape(U_pixel_flat, (i,j))
+        I_pixel = np.reshape(I_pixel_flat, (len(self.pixelmap[:,0]),len(self.pixelmap[:,1])))
+        Q_pixel = np.reshape(Q_pixel_flat, (len(self.pixelmap[:,0]),len(self.pixelmap[:,1])))
+        U_pixel = np.reshape(U_pixel_flat, (len(self.pixelmap[:,0]),len(self.pixelmap[:,1])))
 
-        return I_pixel, Q_pixel, U_pixel
+        return I_pixel, Q_pixel, U_pixel, 1
 
     def map_multidetectors(self):
+
+        print 'This method gives realistic results only if the detector are calibrated'
 
         for i in range(self.number):
 
@@ -268,7 +519,78 @@ class mapmaking():
             Q_map += mapvalues[1]
             U_map += mapvalues[2]
 
-        return I_map, Q_map, U_map
+        return I_map, Q_map, U_map, 2
+
+    def convolution(self, std, map_value):
+
+        kernel = Gaussian2DKernel(stddev=std)
+
+        convolved_map = convolve(map_value, kernel)
+
+        return convolved_map
+        
+
+class computeoffset():
+
+    def __init__(self, data, angX_center, angY_center):
+
+        self.data = data
+        self.angX_center = angX_center 
+        self.angY_center = angY_center
+
+    def centroid(self, threshold=0.275):
+
+        maxval = np.max(self.data)
+        minval = np.min(self.data)
+        y_max, x_max = np.where(self.data == maxval)
+
+        lt_inds = np.where(self.data < threshold*maxval)
+        gt_inds = np.where(self.data > threshold*maxval)
+
+        weight = np.zeros((self.data.shape[1], self.data.shape[0]))
+        weight[gt_inds] = 1.
+        a = self.data[gt_inds]
+        flux = np.sum(a)
+        x_range = np.arange(0, self.data.shape[0])
+        y_range = np.arange(0, self.data.shape[1])
+
+        xx, yy = np.meshgrid(x_range, y_range)
+
+        x_c = np.sum(xx*weight*self.data)/flux
+        y_c = np.sum(yy*weight*self.data)/flux
+
+        return np.rint(x_c), np.rint(y_c)
+
+    def offset(self, threshold=0.275, wcs_trans = wcs_trans, return_pixel=True, \
+               frame = frame, altitude=0., lon=0., lat=0.):
+
+        x_c, y_c = self.centroid(threshold=threshold)
+
+        coord_centre = coordinates.Skycoord(self.angX_center, self.angY_center, frame, unit='deg')
+
+        if return_pixel == True:
+        
+            x_map, y_map = wcs.utils.skycoord_to_pixel(coord, wcs_trans)
+
+            x_off = x_map-x_c
+            y_off = y_map-y_c
+
+            return x_off, y_off
+        
+        else:
+            coord = wcs.utils.pixel_to_skycoord(x_c, y_c, wcs_trans)
+                        
+            offset_angle = coord.transform_to(coord_centre.skyoffset_frame())
+
+            if frame == str(AltAz):
+
+                return offset_angle.az, offset_angle.alt
+
+            else:
+
+                return offset_angle.ra, offset_angle.dec
+
+
 
 
         
