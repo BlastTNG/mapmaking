@@ -74,3 +74,30 @@ coord1, coord2 = d.coord_int(coord1, coord2, coord1time, dettime)
 if coor1type.lower() = 'ra':
     coord1 = coord1*15.
 
+wcsworld = mp.wcs_world(ctype, crpix, cdelt, crval)
+
+w, proj = wcsworld.world(np.array([coord1,coord2]))
+
+filterdat = mp.filterdata(detTOD, 0.1, detfreq) #0.1 is the frequency cutoff for the high pass filter 
+
+cleanedata = filterdat.ifft_filter()
+
+mapmaker = mp.mapmaking(detTOD, 1, 1, len(detlist), w)
+
+if len(detlist) > 1:
+    finalI = mapmaker.map_multidetector_Ionly()
+
+else:
+    finalI = mapmaker.map_singledetector_Ionly()
+
+if conv.lower() != 'na':
+
+    finalI_conv = mapmaker.convolution(stdev, finalI)
+
+
+fig = plt.figure()
+fig.add_subplot(111, projection=proj)
+plt.imshow(finalI, origin='lower', cmap=plt.cm.viridis)
+plt.colorbar()
+plt.xlabel('RA')
+plt.ylabel('Dec')

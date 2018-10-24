@@ -430,14 +430,14 @@ class wcs_world():
         w.wcs.crpix = self.crpix
         w.wcs.cdelt = self.crdelt
         w.wcs.crval = self.crval
-        if self.ctype == 'RADEC':
+        if self.ctype.lower() == 'radec':
             w.wcs.ctype = ["RA---TAN", "DEC--TAN"]
-        elif self.ctype == 'ELALT':
+        elif self.ctype.lower() == 'elaz':
             w.wcs.ctype = ["TLON-ARC", "TLAT-ARC"]
 
         world = w.wcs_world2pix(coord, 1)
 
-        return world
+        return world, w
 
 
 class mapmaking():
@@ -469,7 +469,7 @@ class mapmaking():
         Q_est_flat = np.bincount(param, weight=flux*cos)
         U_est_flat = np.bincount(param, weight=flux*sin)
 
-        N_hits_flat = np.bincount(param)*sigma
+        N_hits_flat = 0.5*np.bincount(param)*sigma
         c_flat = np.bincount(param, weight=0.5*cos)*sigma
         c2_flat = np.bincount(param, weight=0.5*cos**2)*sigma
         s_flat = np.bincount(param, weight=0.5*sin)*sigma
@@ -495,7 +495,17 @@ class mapmaking():
 
         I_pixel = np.reshape(I, (len(self.pixelmap[:,0]),len(self.pixelmap[:,1])))
 
-        return I_pixel
+        return I_pixel, 1
+
+    def map_multidetectors_Ionly(self):
+
+        for i in range(self.number):
+            mapvalues = map_singledetector_Ionly(value=self.data[i],sigma=self.weight[i],\
+                                                 angle=self.polangle[i])
+
+            I_pixel += mapvalues[0]
+
+        return I_pixel, 2 
 
     def map_singledetector(self, value=self.data, sigma=self.weight, angle=self.polangle):
 
