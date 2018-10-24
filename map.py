@@ -32,13 +32,15 @@ class dataload():
             if section.lower() == 'file repository':
                 dirfile = model.get(section,'DIRFILE').split('#')[0].strip()
                 detfile = model.get(section,'DETFILE').split('#')[0].strip()
-                coor1file = model.get(section,'COOR1FILE').split('#')[0].strip()
-                coor2file = model.get(section,'COOR2FILE').split('#')[0].strip()
+                coor1type = model.get(section,'COOR1TYPE').split('#')[0].strip()
+                coor2type = model.get(section,'COOR2TYPE').split('#')[0].strip()
                 pointingfile = model.get(section,'POINTINGOFF').split('#')[0].strip() 
                 dettable = model.get(section, 'DETTABLE').split('#')[0].strip()
+                detpath = model.get(section, 'DETPATH').split('#')[0].strip()
+                coorpath = model.get(section, 'COORPATH').split('#')[0].strip()
+                
+                detlist = np.loadtxt(detpath+detfile, unpack = 'True')
 
-                if detfile.find(',') != -1:
-                    detfile_new = detfile.split(',')
 
             elif section.lower() == 'map parameters':
                 ctype = model.get(section,'CTYPE').split('#')[0].strip()   
@@ -69,14 +71,17 @@ class dataload():
                 frames = np.array(frames.split(',')).astype(float)
                 det_samp_frame = float(model.get(section, 'DET_SAMP_FRAME').split('#'))
                 acs_samp_frame = float(model.get(section, 'ACS_SAMP_FRAME').split('#'))
+                det_file_type = model.get(section,'DET_FILE_TYPE').split('#')
+                coor1_file_type = model.get(section,'COOR1_FILE_TYPE').split('#')
+                coor2_file_type = model.get(section,'COOR2_FILE_TYPE').split('#')
 
-        return dirfile, detfile, coor1file, coor2file, pointingfile, dettable, \
-               ctype, crpix, crdelt, crval, conv, stdev, \
+        return dirfile, detlist, coor1type, coor2type, pointingfile, dettable, \
+               detpath, coorpath, ctype, crpix, crdelt, crval, conv, stdev, \
                detfreq, acsfreq, det_dir_conv, coor1_dir_conv, coor2_dir_conv, frames, \
-               det_samp_frame, acs_samp_frame
+               det_samp_frame, acs_samp_frame, det_file_type, coor1_file_type, coor2_file_type
         
     def loaddata(self, filepath, file, file_type):
-        if np.size(filepath) == 1: 
+        if np.size(file) == 1: 
             d = gd.dirfile(filepath, gd.RDWR|gd.UNENCODED)
             vectors = d.field_list()
             for i in range (len(vectors)):
@@ -122,9 +127,9 @@ class dataload():
         elif coord == 'ELAZ'
 
             el = np.asarray(d.getdata('el', gdtype_coord1, num_frames = d.nframes), dtype = 'int')
-            alt = np.asarray(d.getdata('az', gdtype_coord2, num_frames = d.nframes), dtype = 'int')
+            az = np.asarray(d.getdata('az', gdtype_coord2, num_frames = d.nframes), dtype = 'int')
 
-            return data_value, el, alt
+            return data_value, el, az
 
     def convert_dirfile(self, data_value, value1, value2=0.):
 
@@ -134,12 +139,14 @@ class dataload():
 
     def frame_zoom(self, data, sample_frame, fs, frames):
 
+        frames = frames*sample_frame
+
         if len(np.shape(data)) == 1:
-            time = np.arange(len(data[frames[0]:frames[1]])*sample_frame)/fs
+            time = np.arange(len(data[frames[0]:frames[1]]))/fs
 
             return time, data[frames[0]:frames[1]]
         else:
-            time = np.arange(len(data[0, frames[0]:frames[1]])*sample_frame)/fs
+            time = np.arange(len(data[0, frames[0]:frames[1]]))/fs
 
             return  time, data[:,frames[0]:frames[1]]
 
@@ -149,7 +156,6 @@ class dataload():
         coord2_int = interp1d(time_acs, coord2, kind= 'linear')
 
         return coord1_int(time_det), coord2_int(time_det)
-
 
 class despike():
 
