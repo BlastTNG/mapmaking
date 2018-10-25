@@ -1,4 +1,5 @@
 import map as mp
+import numpy as np
 import sys 
 import matplotlib
 matplotlib.use("tkagg")
@@ -43,7 +44,7 @@ coor2_file_type = param[24]
 
 if dirfile.lower() == 'na':
 
-    if len(detlist) > 1:
+    if np.size(detlist) > 1:
         det_value_0 = d.loaddata(detpath, detlist[0], det_file_type)
 
         detTOD = np.zeros((len(detlist), len(det_value_0)))
@@ -52,7 +53,7 @@ if dirfile.lower() == 'na':
         for i in range(1,len(detlist)):
             detTOD[i,:] = d.loaddata(detpath, detlist[i], det_file_type)
     else:
-        detTOD = d.loaddata(detpath, detlist[0], det_file_type)
+        detTOD = d.loaddata(detpath, detlist, det_file_type)
 
     coord1 = d.loaddata(coorpath, coor1type, coor1_file_type)
     coord2 = d.loaddata(coorpath, coor2type, coor2_file_type)
@@ -61,17 +62,20 @@ else:
     detTOD, coord1, coord2 = d.loadfulldata(dirfile, detlist, det_file_type, coord_type1, \
                                             coor1_file_type, coor2_file_type)
 
+
 detTOD = d.convert_dirfile(detTOD, det_dir_conv[0], det_dir_conv[1])
 coord1 = d.convert_dirfile(coord1, coor1_dir_conv[0], coor1_dir_conv[1])
 coord2 = d.convert_dirfile(coord2, coor2_dir_conv[0], coor2_dir_conv[1])
 
 dettime, detTOD = d.frame_zoom(detTOD, det_samp_frame, detfreq, frames)
+
 coord1time, coord1 = d.frame_zoom(coord1, acs_samp_frame, acsfreq, frames)
 coord2time, coord2 = d.frame_zoom(coord2, acs_samp_frame, acsfreq, frames)
 
 coord1, coord2 = d.coord_int(coord1, coord2, coord1time, dettime)
 
-if coor1type.lower() = 'ra':
+
+if coor1type.lower() == 'ra':
     coord1 = coord1*15.
 
 wcsworld = mp.wcs_world(ctype, crpix, cdelt, crval)

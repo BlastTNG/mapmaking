@@ -1,6 +1,7 @@
 import numpy as np
 import os
 import scipy.signal as sgn
+from scipy.interpolate import interp1d
 import pygetdata as gd
 from astropy import wcs, coordinates
 from astropy.convolution import Gaussian2DKernel
@@ -12,14 +13,16 @@ class dataload():
 
         self.filepath_map = filepath_map
 
-    def conversion_type(file_type):
+    def conversion_type(self, file_type):
 
         if file_type == 'u16':
             gdtype = gd.UINT16
         elif file_type == 'u32':
             gdtype = gd.UINT32
         elif file_type == 's32':
-            gdtype == gd.INT32
+            gdtype = gd.INT32
+
+        return gdtype
 
     def map_param(self):
 
@@ -32,26 +35,26 @@ class dataload():
             if section.lower() == 'file repository':
                 dirfile = model.get(section,'DIRFILE').split('#')[0].strip()
                 detfile = model.get(section,'DETFILE').split('#')[0].strip()
-                coor1type = model.get(section,'COOR1TYPE').split('#')[0].strip()
-                coor2type = model.get(section,'COOR2TYPE').split('#')[0].strip()
+                coor1type = model.get(section,'COOR1TYPE').split('#')[0].strip().lower()
+                coor2type = model.get(section,'COOR2TYPE').split('#')[0].strip().lower()
                 pointingfile = model.get(section,'POINTINGOFF').split('#')[0].strip() 
                 dettable = model.get(section, 'DETTABLE').split('#')[0].strip()
                 detpath = model.get(section, 'DETPATH').split('#')[0].strip()
                 coorpath = model.get(section, 'COORPATH').split('#')[0].strip()
                 
-                detlist = np.loadtxt(detpath+detfile, unpack = 'True')
+                detlist = np.loadtxt(detpath+detfile, unpack = 'True', dtype = str)
 
 
             elif section.lower() == 'map parameters':
                 ctype = model.get(section,'CTYPE').split('#')[0].strip()   
-                crpix = model.get(section,'CRPIX').split('#')
+                crpix = model.get(section,'CRPIX').split('#')[0].strip()
                 crpix = np.array(crpix.split(',')).astype(float)
-                crdelt = model.get(section,'CRDELT').split('#')
-                crdelt = np.array(crpix.split(',')).astype(float)
-                crval = model.get(section,'CRDVAL').split('#')
-                crval = np.array(crpix.split(',')).astype(float)
-                conv = model.get(section,'CONV').split('#').strip()
-                stdev = model.get(section,'STDEV').split('#')
+                crdelt = model.get(section,'CRDELT').split('#')[0].strip()
+                crdelt = np.array(crdelt.split(',')).astype(float)
+                crval = model.get(section,'CRVAL').split('#')[0].strip()
+                crval = np.array(crval.split(',')).astype(float)
+                conv = model.get(section,'CONV').split('#')[0].strip()
+                stdev = float(model.get(section,'STDEV').split('#')[0])
 
                 #Conversion of stdev from arcsec to pixel
                 if conv.lower() != 'na':
@@ -59,21 +62,21 @@ class dataload():
 
             elif section.lower() == 'experiment parameters':
 
-                detfreq = float(model.get(section, 'DETFREQ').split('#'))
-                acsfreq = float(model.get(section, 'ACSFREQ').split('#'))
-                det_dir_conv = model.get(section,'DET_DIR_CONV').split('#')
+                detfreq = float(model.get(section, 'DETFREQ').split('#')[0])
+                acsfreq = float(model.get(section, 'ACSFREQ').split('#')[0])
+                det_dir_conv = model.get(section,'DET_DIR_CONV').split('#')[0].strip()
                 det_dir_conv = np.array(det_dir_conv.split(',')).astype(float)
-                coor1_dir_conv = model.get(section,'COOR1_DIR_CONV').split('#')
+                coor1_dir_conv = model.get(section,'COOR1_DIR_CONV').split('#')[0].strip()
                 coor1_dir_conv = np.array(coor1_dir_conv.split(',')).astype(float)
-                coor2_dir_conv = model.get(section,'COOR2_DIR_CONV').split('#')
+                coor2_dir_conv = model.get(section,'COOR2_DIR_CONV').split('#')[0].strip()
                 coor2_dir_conv = np.array(coor2_dir_conv.split(',')).astype(float)
-                frames = model.get(section,'FRAMES').split('#')
-                frames = np.array(frames.split(',')).astype(float)
-                det_samp_frame = float(model.get(section, 'DET_SAMP_FRAME').split('#'))
-                acs_samp_frame = float(model.get(section, 'ACS_SAMP_FRAME').split('#'))
-                det_file_type = model.get(section,'DET_FILE_TYPE').split('#')
-                coor1_file_type = model.get(section,'COOR1_FILE_TYPE').split('#')
-                coor2_file_type = model.get(section,'COOR2_FILE_TYPE').split('#')
+                frames = model.get(section,'FRAMES').split('#')[0].strip()
+                frames = np.array(frames.split(',')).astype(int)
+                det_samp_frame = float(model.get(section, 'DET_SAMP_FRAME').split('#')[0])
+                acs_samp_frame = float(model.get(section, 'ACS_SAMP_FRAME').split('#')[0])
+                det_file_type = model.get(section,'DET_FILE_TYPE').split('#')[0].strip()
+                coor1_file_type = model.get(section,'COOR1_FILE_TYPE').split('#')[0].strip()
+                coor2_file_type = model.get(section,'COOR2_FILE_TYPE').split('#')[0].strip()
 
         return dirfile, detlist, coor1type, coor2type, pointingfile, dettable, \
                detpath, coorpath, ctype, crpix, crdelt, crval, conv, stdev, \
@@ -84,6 +87,7 @@ class dataload():
         if np.size(file) == 1: 
             d = gd.dirfile(filepath, gd.RDWR|gd.UNENCODED)
             vectors = d.field_list()
+            print file
             for i in range (len(vectors)):
                 if vectors[i] == file:
                     gdtype = self.conversion_type(file_type)
@@ -103,9 +107,9 @@ class dataload():
                         values[i,:] = np.asarray(d.getdata(vectors[file[i]], \
                                                  gdtype_det,num_frames = d.nframes))
                 
-        return values
+            return values
     
-    def loadfulldata(self, filepath, detlist, det_type, coord='RADEC', coord_type1, coord_type2):
+    def loadfulldata(self, filepath, detlist, det_type, coord, coord_type1, coord_type2):
         d = gd.dirfile(filepath, gd.RDWR|gd.UNENCODED)
         vectors = d.field_list()
         len_det = len(d.getdata(vectors[detlist[0]], gd.UINT16, num_frames = d.nframes))
@@ -124,7 +128,7 @@ class dataload():
 
             return data_value, ra, dec
 
-        elif coord == 'ELAZ'
+        elif coord == 'ELAZ':
 
             el = np.asarray(d.getdata('el', gdtype_coord1, num_frames = d.nframes), dtype = 'int')
             az = np.asarray(d.getdata('az', gdtype_coord2, num_frames = d.nframes), dtype = 'int')
@@ -137,22 +141,29 @@ class dataload():
 
         return data_value
 
-    def frame_zoom(self, data, sample_frame, fs, frames):
+    def frame_zoom(self, data, sample_frame, fs, fps):
 
-        frames = frames*sample_frame
+        frames = fps.copy()
+        
+        if sample_frame % 2 == 0.:
+            frames[0] = fps[0]*sample_frame
+            frames[1] = fps[1]*sample_frame+1
+        else:
+            frames[0] = fps[0]*sample_frame
+            frames[1] = fps[1]*sample_frame+1
 
         if len(np.shape(data)) == 1:
-            time = np.arange(len(data[frames[0]:frames[1]]))/fs
-
+            time = np.arange(len(data))/fs
+            time = time[frames[0]:frames[1]]
             return time, data[frames[0]:frames[1]]
         else:
-            time = np.arange(len(data[0, frames[0]:frames[1]]))/fs
-
+            time = np.arange(len(data[0, :]))/fs
+            time = time[frames[0]:frames[1]]
             return  time, data[:,frames[0]:frames[1]]
 
     def coord_int(self, coord1, coord2, time_acs, time_det):
 
-        coord1_int = interp1d(tìme_acs, coord1, kind='linear')
+        coord1_int = interp1d(time_acs, coord1, kind='linear')
         coord2_int = interp1d(time_acs, coord2, kind= 'linear')
 
         return coord1_int(time_det), coord2_int(time_det)
@@ -334,7 +345,11 @@ class rotate():
         self.pitch = pitch
         self.roll = roll
 
-    def rotmatrix(self, yaw_mat = self.yaw, roll_mat = self.roll, pitch_mat=self.pitch):
+    def rotmatrix(self, yaw_mat = None, roll_mat = None, pitch_mat=None):
+        if yaw_mat == None:
+            yaw_mat = self.yaw.copy()
+            roll_mat = self.roll.copy()
+            pitch_mat = self.pitch.copy()
         yawMatrix = np.matrix([[np.cos(yaw_mat), -np.sin(yaw_mat), 0], \
                                [np.sin(yaw_mat), np.cos(yaw_mat), 0], \
                                [0, 0, 1]])
@@ -439,8 +454,7 @@ class wcs_world():
 
         return world, w
 
-
-class mapmaking():
+class mapmaking(object):
 
     def __init__(self, data, weight, polangle, number, pixelmap):
 
@@ -450,7 +464,12 @@ class mapmaking():
         self.number = number
         self.pixelmap = pixelmap
 
-    def map_param(self, value=self.data, sigma=self.weight, angle=self.polangle):
+    def map_param(self, value = None, sigma=None, angle=None):
+
+        if value == None:
+            value = self.data.copy() 
+            sigma = self.weight.copy()
+            angle = self.polangle.copy()
 
         '''
         sigma is the inverse of the sqared white noise value, so it is 1/n**2
@@ -487,7 +506,12 @@ class mapmaking():
 
         return I_est_flat, Q_est_flat, U_est_flat, N_hits_flat, Delta, A, B, C, D, E, F
 
-    def map_singledetector_Ionly(self, value=self.data, sigma=self.weight, angle=self.polangle):
+    def map_singledetector_Ionly(self, value=None, sigma=None, angle=None):
+
+        if value == None:
+            value = self.data.copy() 
+            sigma = self.weight.copy()
+            angle = self.polangle.copy()
 
         value =self.map_param(value=value, sigma=sigma, angle=angle)
 
@@ -507,7 +531,12 @@ class mapmaking():
 
         return I_pixel, 2 
 
-    def map_singledetector(self, value=self.data, sigma=self.weight, angle=self.polangle):
+    def map_singledetector(self, value=None, sigma=None, angle=None):
+
+        if value == None:
+            value = self.data.copy() 
+            sigma = self.weight.copy()
+            angle = self.polangle.copy()
 
         I_est_flat, Q_est_flat, U_est_flat, N_hits_flat, Delta, \
                     A, B, C, D, E, F = self.map_param(value=value, sigma=sigma,angle=angle)
@@ -545,7 +574,6 @@ class mapmaking():
 
         return convolved_map
         
-
 class computeoffset():
 
     def __init__(self, data, angX_center, angY_center):
@@ -577,8 +605,7 @@ class computeoffset():
 
         return np.rint(x_c), np.rint(y_c)
 
-    def offset(self, threshold=0.275, wcs_trans = wcs_trans, return_pixel=True, \
-               frame = frame, altitude=0., lon=0., lat=0.):
+    def offset(self, wcs_trans, frame, threshold=0.275, return_pixel=True, altitude=0., lon=0., lat=0.):
 
         x_c, y_c = self.centroid(threshold=threshold)
 
@@ -598,7 +625,7 @@ class computeoffset():
                         
             offset_angle = coord.transform_to(coord_centre.skyoffset_frame())
 
-            if frame == str(AltAz):
+            if frame.lower() == 'elaz':
 
                 return offset_angle.az, offset_angle.alt
 
