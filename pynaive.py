@@ -62,7 +62,6 @@ else:
     detTOD, coord1, coord2 = d.loadfulldata(dirfile, detlist, det_file_type, coord_type1, \
                                             coor1_file_type, coor2_file_type)
 
-
 detTOD = d.convert_dirfile(detTOD, det_dir_conv[0], det_dir_conv[1])
 coord1 = d.convert_dirfile(coord1, coor1_dir_conv[0], coor1_dir_conv[1])
 coord2 = d.convert_dirfile(coord2, coor2_dir_conv[0], coor2_dir_conv[1])
@@ -74,21 +73,22 @@ coord2time, coord2 = d.frame_zoom(coord2, acs_samp_frame, acsfreq, frames)
 
 coord1, coord2 = d.coord_int(coord1, coord2, coord1time, dettime)
 
-
 if coor1type.lower() == 'ra':
     coord1 = coord1*15.
 
-wcsworld = mp.wcs_world(ctype, crpix, cdelt, crval)
+wcsworld = mp.wcs_world(ctype, crpix, crdelt, crval)
 
-w, proj = wcsworld.world(np.array([coord1,coord2]))
+w, proj = wcsworld.world(np.transpose(np.array([coord1,coord2])))
 
-filterdat = mp.filterdata(detTOD, 0.1, detfreq) #0.1 is the frequency cutoff for the high pass filter 
+filterdat = mp.filterdata(detTOD, 0.2, detfreq) #0.1 is the frequency cutoff for the high pass filter 
+
 
 cleanedata = filterdat.ifft_filter()
 
-mapmaker = mp.mapmaking(detTOD, 1, 1, len(detlist), w)
 
-if len(detlist) > 1:
+mapmaker = mp.mapmaking(detTOD, 1., 1., np.size(detlist), np.round(w).astype(int))
+
+if np.size(detlist) > 1:
     finalI = mapmaker.map_multidetector_Ionly()
 
 else:
@@ -98,10 +98,10 @@ if conv.lower() != 'na':
 
     finalI_conv = mapmaker.convolution(stdev, finalI)
 
-
 fig = plt.figure()
 fig.add_subplot(111, projection=proj)
-plt.imshow(finalI, origin='lower', cmap=plt.cm.viridis)
+plt.imshow(finalI[0], origin='lower', cmap=plt.cm.viridis)
 plt.colorbar()
 plt.xlabel('RA')
 plt.ylabel('Dec')
+plt.show()

@@ -6,6 +6,11 @@ import pygetdata as gd
 from astropy import wcs, coordinates
 from astropy.convolution import Gaussian2DKernel
 import ConfigParser
+import copy
+
+import matplotlib
+matplotlib.use("tkagg")
+import matplotlib.pyplot as plt
 
 class dataload():
 
@@ -188,22 +193,53 @@ class despike():
         '''
         index = np.ones(1)
         index_final = np.array([], dtype = 'int')
+        ledge = np.array([], dtype = 'int')
+        redge = np.array([], dtype = 'int')
+        print np.size(index_final)
+        count = 0
         while len(index) > 0:
 
-            mask = np.ones(len(self.data), dtype = 'Bool')
-            mask[index_final] = False
-            data_masked = self.data[mask]
-            y_std = np.ma.std(data_masked)
-            y_mean = np.ma.mean(data_masked)
+            print index_final
+
+            if np.size(index_final) != 0:
+                for i in range(len(index_final)):
+                    data_masked[ledge[i]:redge[i]] = np.random.normal(y_mean, y_std, \
+                                                        redge[i]-ledge[i])
+            else:
+                data_masked = self.data.copy()
+            y_std = np.std(data_masked)
+            y_mean = np.mean(data_masked)
+            print 'std', y_std
+            print 'mean', y_mean
+            
+            if count >=2:
+                sys.exit()
             if hthres != 0 and pthres == 0:
-                index, param = sgn.find_peaks(data_masked, height = y_mean + hthres*y_std)
+                index, param = sgn.find_peaks(data_masked, height = (y_mean - hthres*y_std,\
+                                                                     y_mean + hthres*y_std))
             elif pthres != 0 and hthres == 0:
                 index, param = sgn.find_peaks(data_masked, prominence = pthres*y_std)
             elif hthres != 0 and pthres != 0:
                 index, param = sgn.find_peaks(data_masked, height = y_mean + hthres*y_std, \
                                               prominence = pthres*y_std)
 
-            index_final = np.append(index_final, index)
+            plt.plot(data_masked)
+            plt.plot(index, self.data[index], 'x')
+            plt.show()
+            
+            print index
+            ledget = sgn.peak_widths(data_masked,index)[2]
+            redget = sgn.peak_widths(data_masked,index)[3]
+            print 'Round'
+            print np.floor(ledget).astype(int)
+            print type(ledget)
+
+            index_final = np.append(index_final, index.astype(int))
+            ledge = np.append(ledge, np.floor(ledget).astype(int))
+            redge = np.append(redge, np.ceil(redget).astype(int))
+            print ledge
+            print redge
+            count += 1
 
         self.peakind = index_final.copy()
 
@@ -222,9 +258,9 @@ class despike():
 
         x_inter = np.array([], dtype = 'int')
 
-        if len(self.peakind) == 0:
+        if np.size(self.peakind) == 0:
             self.findpeak(hthres=hthres, pthres=pthres)
-        if len(self.width) == 0:
+        if np.size(self.width) == 0:
             self.peak_width()
 
         for i in range(0, len(self.peakind)):
@@ -259,8 +295,8 @@ class despike():
             y_sub = np.random.poisson(mu, len(x_inter))
         else:
             y_sub = np.random.normal(final_mean, final_std, len(x_inter))
-
-        self.data[x_inter] = y_sub
+        if np.size(y_sub) > 0:
+            self.data[x_inter] = y_sub
 
         return self.data
 
@@ -300,10 +336,15 @@ class filterdata():
     def fft_filter(self):
 
         fft_data = np.fft.rfft(self.data)
-        fft_frequency = np.fft.rfftfreq(self.data, self.fs)
+        fft_frequency = np.fft.rfftfreq(np.size(self.data), 1/self.fs)
 
-        vect = np.vectorize(self.cosine)
-        
+        print 'Data', len(fft_data)
+        print 'Freq', len(fft_frequency)
+
+        vect = np.vectorize(self.cosine_filter)
+
+        print 'Vect', len(vect(fft_frequency))
+
         filtereddata = vect(fft_frequency)*fft_data
 
         return filtereddata
@@ -311,22 +352,24 @@ class filterdata():
     def fft_clean(self, hthres = 5, pthres = 0):
 
         filtereddata = self.fft_filter()
+        print filtereddata[0]
         peakind = np.array([])
         height = np.array([])
         width = np.array([])
         ledge = np.array([])
         redge = np.array([])
+        
         despikefft = despike(filtereddata, peakind, height, width, ledge, redge)
 
-        cleaned_fftdata = despikefft.replace_peak(hthres = hthres, pthres = pthres)
+        #cleaned_fftdata = despikefft.replace_peak(hthres = hthres, pthres = pthres)
 
-        return cleaned_fftdata
+        return filtereddata
 
     def ifft_filter(self, hthres = 5, pthres = 0):
 
         cleaned_fftdata =  self.fft_clean(hthres = 5, pthres = 0)
         
-        ifft_data = np.fft.irfft(cleaned_fftdata)
+        ifft_data = np.fft.irfft(cleaned_fftdata, len(self.data))
 
         return ifft_data
 
@@ -432,10 +475,10 @@ class detector():
 
 class wcs_world():
 
-    def __init__(self, ctype, crpix, cdelt, crval):
+    def __init__(self, ctype, crpix, crdelt, crval):
 
         self.ctype = ctype
-        self.cdelt = cdelt
+        self.crdelt = crdelt
         self.crpix = crpix
         self.crval = crval
 
@@ -467,9 +510,15 @@ class mapmaking(object):
     def map_param(self, value = None, sigma=None, angle=None):
 
         if value == None:
-            value = self.data.copy() 
-            sigma = self.weight.copy()
-            angle = self.polangle.copy()
+            value = self.data.copy()
+            if np.size(self.weight) > 1:
+                sigma = self.weight.copy()
+            else:
+                sigma = copy.copy(self.weight)
+            if np.size(self.polangle) > 1:
+                angle = self.polangle.copy()
+            else:
+                angle = copy.copy(self.polangle)*np.ones(np.size(value))
 
         '''
         sigma is the inverse of the sqared white noise value, so it is 1/n**2
@@ -477,23 +526,36 @@ class mapmaking(object):
         x_map = self.pixelmap[:,0]   #RA 
         y_map = self.pixelmap[:,1]   #DEC
 
+        x_map = x_map+np.abs(np.amin(x_map))
+        y_map = y_map+np.abs(np.amin(y_map))
 
-        param = x_map*len(x_map)+y_map
+        x_len = np.amax(x_map)-np.amin(x_map)
+        param = x_map+y_map*x_len
+        param = param.astype(int)
 
-        flux = value.copy()
-        cos = np.cos(2.*angle.copy())
-        sin = np.sin(2.*angle.copy())
+        flux = value
+        cos = np.cos(2.*angle)
+        sin = np.sin(2.*angle)
 
-        I_est_flat = np.bincount(param, weight=flux)*sigma
-        Q_est_flat = np.bincount(param, weight=flux*cos)
-        U_est_flat = np.bincount(param, weight=flux*sin)
+        print type(param)
+        print np.amax(x_map), np.amin(x_map)
+        print np.amax(y_map), np.amin(y_map)
+        print np.amax(param), np.amin(param)
+
+        I_est_flat = np.bincount(param, weights=flux)*sigma
+        Q_est_flat = np.bincount(param, weights=flux*cos)
+        U_est_flat = np.bincount(param, weights=flux*sin)
+
+        print len(I_est_flat)
+        print 'count', len(np.bincount(param))
 
         N_hits_flat = 0.5*np.bincount(param)*sigma
-        c_flat = np.bincount(param, weight=0.5*cos)*sigma
-        c2_flat = np.bincount(param, weight=0.5*cos**2)*sigma
-        s_flat = np.bincount(param, weight=0.5*sin)*sigma
+        print len(N_hits_flat)
+        c_flat = np.bincount(param, weights=0.5*cos)*sigma
+        c2_flat = np.bincount(param, weights=0.5*cos**2)*sigma
+        s_flat = np.bincount(param, weights=0.5*sin)*sigma
         s2_flat = N_hits_flat-c2_flat
-        m_flat = np.bincount(param, weight=0.5*cos*sin)*sigma
+        m_flat = np.bincount(param, weights=0.5*cos*sin)*sigma
 
         Delta = c_flat**2*(c2_flat-N_hits_flat)+2*s_flat*c_flat*m_flat-c2_flat*s_flat**2-\
                 N_hits_flat*(c2_flat**2+m_flat**2-c2_flat*N_hits_flat)
@@ -504,20 +566,29 @@ class mapmaking(object):
         E = c_flat*s_flat-m_flat*N_hits_flat
         F = c2_flat*N_hits_flat-c_flat**2
 
-        return I_est_flat, Q_est_flat, U_est_flat, N_hits_flat, Delta, A, B, C, D, E, F
+        return I_est_flat, Q_est_flat, U_est_flat, N_hits_flat, Delta, A, B, C, D, E, F, param
 
     def map_singledetector_Ionly(self, value=None, sigma=None, angle=None):
-
-        if value == None:
-            value = self.data.copy() 
-            sigma = self.weight.copy()
-            angle = self.polangle.copy()
 
         value =self.map_param(value=value, sigma=sigma, angle=angle)
 
         I = value[0]/value[3]
 
-        I_pixel = np.reshape(I, (len(self.pixelmap[:,0]),len(self.pixelmap[:,1])))
+        x_len = np.amax(self.pixelmap[:,0])-np.amin(self.pixelmap[:,0])
+        y_len = np.amax(self.pixelmap[:,1])-np.amin(self.pixelmap[:,1])
+
+        if len(I) < (x_len+1)*(y_len+1):
+            valmax = (x_len+1)*(y_len+1)
+            pmax = np.amax(value[-1])
+            I_fin = np.nan*np.arange(pmax+1, valmax)
+            
+            I = np.append(I, I_fin)
+
+        index, = np.where(I==0)
+        if np.size(index) >=1 :
+            I[index] = np.nan
+
+        I_pixel = np.reshape(I, (y_len+1,x_len+1))
 
         return I_pixel, 1
 
@@ -533,13 +604,9 @@ class mapmaking(object):
 
     def map_singledetector(self, value=None, sigma=None, angle=None):
 
-        if value == None:
-            value = self.data.copy() 
-            sigma = self.weight.copy()
-            angle = self.polangle.copy()
 
         I_est_flat, Q_est_flat, U_est_flat, N_hits_flat, Delta, \
-                    A, B, C, D, E, F = self.map_param(value=value, sigma=sigma,angle=angle)
+                    A, B, C, D, E, F, param = self.map_param(value=value, sigma=sigma,angle=angle)
 
         I_pixel_flat = (A*I_est_flat+B*Q_est_flat+C*U_est_flat)/Delta
         Q_pixel_flat = (B*I_est_flat+D*Q_est_flat+E*U_est_flat)/Delta
