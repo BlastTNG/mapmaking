@@ -4,7 +4,7 @@ import scipy.signal as sgn
 from scipy.interpolate import interp1d
 import pygetdata as gd
 from astropy import wcs, coordinates
-from astropy.convolution import Gaussian2DKernel
+from astropy.convolution import Gaussian2DKernel, convolve
 import ConfigParser
 import copy
 
@@ -195,28 +195,26 @@ class despike():
         index_final = np.array([], dtype = 'int')
         ledge = np.array([], dtype = 'int')
         redge = np.array([], dtype = 'int')
-        print np.size(index_final)
         count = 0
         while len(index) > 0:
 
             print index_final
+            print ledge, redge
 
             if np.size(index_final) != 0:
                 for i in range(len(index_final)):
-                    data_masked[ledge[i]:redge[i]] = np.random.normal(y_mean, y_std, \
-                                                        redge[i]-ledge[i])
+                    data_masked[ledge[i]:redge[i]] = (data_masked[ledge[i]]+data_masked[redge[i]])/2.
             else:
                 data_masked = self.data.copy()
             y_std = np.std(data_masked)
             y_mean = np.mean(data_masked)
-            print 'std', y_std
-            print 'mean', y_mean
+
+            print y_std, y_mean
             
             if count >=2:
                 sys.exit()
             if hthres != 0 and pthres == 0:
-                index, param = sgn.find_peaks(data_masked, height = (y_mean - hthres*y_std,\
-                                                                     y_mean + hthres*y_std))
+                index, param = sgn.find_peaks(data_masked, height = y_mean + hthres*y_std, distance=100)
             elif pthres != 0 and hthres == 0:
                 index, param = sgn.find_peaks(data_masked, prominence = pthres*y_std)
             elif hthres != 0 and pthres != 0:
@@ -227,18 +225,12 @@ class despike():
             plt.plot(index, self.data[index], 'x')
             plt.show()
             
-            print index
             ledget = sgn.peak_widths(data_masked,index)[2]
             redget = sgn.peak_widths(data_masked,index)[3]
-            print 'Round'
-            print np.floor(ledget).astype(int)
-            print type(ledget)
 
             index_final = np.append(index_final, index.astype(int))
             ledge = np.append(ledge, np.floor(ledget).astype(int))
             redge = np.append(redge, np.ceil(redget).astype(int))
-            print ledge
-            print redge
             count += 1
 
         self.peakind = index_final.copy()
@@ -321,9 +313,9 @@ class filterdata():
         return b, a
 
     def butter_highpass_filter(self, order=5):
-        b, a = highpass(order)
-        self.data = sgn.lfilter(b, a, self.data)
-        return self.data
+        b, a = self.highpass(order)
+        filterdata = sgn.lfilter(b, a, self.data)
+        return filterdata
 
     def cosine_filter(self, f):
         if f < .5*self.cutoff:
@@ -333,43 +325,25 @@ class filterdata():
         elif f > self.cutoff:
             return 1
     
-    def fft_filter(self):
+    def fft_filter(self, window):
 
-        fft_data = np.fft.rfft(self.data)
+        if window == True:
+            window = np.hanning(len(self.data))
+
+            fft_data = np.fft.rfft(self.data*window)
+        else:
+            fft_data = np.fft.rfft(self.data)
         fft_frequency = np.fft.rfftfreq(np.size(self.data), 1/self.fs)
 
-        print 'Data', len(fft_data)
-        print 'Freq', len(fft_frequency)
-
         vect = np.vectorize(self.cosine_filter)
-
-        print 'Vect', len(vect(fft_frequency))
 
         filtereddata = vect(fft_frequency)*fft_data
 
         return filtereddata
 
-    def fft_clean(self, hthres = 5, pthres = 0):
-
-        filtereddata = self.fft_filter()
-        print filtereddata[0]
-        peakind = np.array([])
-        height = np.array([])
-        width = np.array([])
-        ledge = np.array([])
-        redge = np.array([])
+    def ifft_filter(self, window):
         
-        despikefft = despike(filtereddata, peakind, height, width, ledge, redge)
-
-        #cleaned_fftdata = despikefft.replace_peak(hthres = hthres, pthres = pthres)
-
-        return filtereddata
-
-    def ifft_filter(self, hthres = 5, pthres = 0):
-
-        cleaned_fftdata =  self.fft_clean(hthres = 5, pthres = 0)
-        
-        ifft_data = np.fft.irfft(cleaned_fftdata, len(self.data))
+        ifft_data = np.fft.irfft(self.fft_filter(window=window), len(self.data))
 
         return ifft_data
 
@@ -473,6 +447,16 @@ class detector():
 
         return self.grid-2*hwp_angle+roll
 
+    def polyfit(self, n):
+
+        x = np.arange(len(self.data))
+        y = self.data.copy()
+
+        poly = np.polyfit(x, y, n)
+        p = np.poly1d(poly)
+
+        return p(x)
+
 class wcs_world():
 
     def __init__(self, ctype, crpix, crdelt, crval):
@@ -526,10 +510,11 @@ class mapmaking(object):
         x_map = self.pixelmap[:,0]   #RA 
         y_map = self.pixelmap[:,1]   #DEC
 
-        x_map = x_map+np.abs(np.amin(x_map))
-        y_map = y_map+np.abs(np.amin(y_map))
+        x_map = np.round(x_map+np.abs(np.amin(x_map)))
+        y_map = np.round(y_map+np.abs(np.amin(y_map)))
 
-        x_len = np.amax(x_map)-np.amin(x_map)
+        x_len = np.amax(x_map)-np.amin(x_map)+1
+        
         param = x_map+y_map*x_len
         param = param.astype(int)
 
@@ -572,7 +557,8 @@ class mapmaking(object):
 
         value =self.map_param(value=value, sigma=sigma, angle=angle)
 
-        I = value[0]/value[3]
+        I = np.zeros(len(value[0]))
+        I[np.nonzero(value[0])] = value[0][np.nonzero(value[0])]/value[3][np.nonzero(value[3])]
 
         x_len = np.amax(self.pixelmap[:,0])-np.amin(self.pixelmap[:,0])
         y_len = np.amax(self.pixelmap[:,1])-np.amin(self.pixelmap[:,1])
@@ -580,13 +566,13 @@ class mapmaking(object):
         if len(I) < (x_len+1)*(y_len+1):
             valmax = (x_len+1)*(y_len+1)
             pmax = np.amax(value[-1])
-            I_fin = np.nan*np.arange(pmax+1, valmax)
+            I_fin = 0.*np.arange(pmax+1, valmax)
             
             I = np.append(I, I_fin)
 
-        index, = np.where(I==0)
-        if np.size(index) >=1 :
-            I[index] = np.nan
+        # index, = np.where(I==0)
+        # if np.size(index) >=1 :
+        #     I[index] = 0.
 
         I_pixel = np.reshape(I, (y_len+1,x_len+1))
 

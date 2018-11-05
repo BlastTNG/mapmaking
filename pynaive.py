@@ -71,22 +71,30 @@ dettime, detTOD = d.frame_zoom(detTOD, det_samp_frame, detfreq, frames)
 coord1time, coord1 = d.frame_zoom(coord1, acs_samp_frame, acsfreq, frames)
 coord2time, coord2 = d.frame_zoom(coord2, acs_samp_frame, acsfreq, frames)
 
-coord1, coord2 = d.coord_int(coord1, coord2, coord1time, dettime)
+coord1_inter, coord2_inter = d.coord_int(coord1, coord2, coord1time, dettime)
 
 if coor1type.lower() == 'ra':
+    coord1_inter = coord1_inter*15.
     coord1 = coord1*15.
 
 wcsworld = mp.wcs_world(ctype, crpix, crdelt, crval)
 
-w, proj = wcsworld.world(np.transpose(np.array([coord1,coord2])))
+w, proj = wcsworld.world(np.transpose(np.array([coord1_inter,coord2_inter])))
 
-filterdat = mp.filterdata(detTOD, 0.2, detfreq) #0.1 is the frequency cutoff for the high pass filter 
+det = mp.detector(detTOD, 0.,0.)
+polyTOD = det.polyfit(10)
 
+filterdat = mp.filterdata(detTOD-polyTOD, 0.1, detfreq) #0.1 is the frequency cutoff for the high pass filter 
 
-cleanedata = filterdat.ifft_filter()
+ifftdata = filterdat.ifft_filter(window=True)
 
+import peakdet as pd 
+spikes = pd.detect_peaks(ifftdata, 5, 5)
+width_spikes = pd.width(ifftdata, spikes)
 
-mapmaker = mp.mapmaking(detTOD, 1., 1., np.size(detlist), np.round(w).astype(int))
+cleanedata = pd.replace(ifftdata.copy(), width_spikes[0], width_spikes[1])
+
+mapmaker = mp.mapmaking(cleanedata, 1., 1., np.size(detlist), np.floor(w).astype(int))
 
 if np.size(detlist) > 1:
     finalI = mapmaker.map_multidetector_Ionly()
@@ -98,10 +106,14 @@ if conv.lower() != 'na':
 
     finalI_conv = mapmaker.convolution(stdev, finalI)
 
-fig = plt.figure()
-fig.add_subplot(111, projection=proj)
-plt.imshow(finalI[0], origin='lower', cmap=plt.cm.viridis)
-plt.colorbar()
-plt.xlabel('RA')
-plt.ylabel('Dec')
+ax = plt.subplot(projection=proj)
+im = ax.imshow(finalI[0], origin='lower', cmap=plt.cm.viridis)
+cbar = plt.colorbar(im)
+#overlay = ax.get_coords_overlay('2000')
+#ax.grid(color='white', ls='dotted', lw=2)
+#ax.colorbar()
+ax.set_xlabel('RA')
+ax.set_ylabel('Dec')
+#ax.contour(finalI[0], levels=(-0.0003, -0.00025, -0.0002, -0.00015), \
+#           colors='white', alpha=0.5)
 plt.show()
